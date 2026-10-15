@@ -376,10 +376,10 @@ section{padding:clamp(72px,10vw,128px) 0}
 .g-badge b{font:800 44px/1 var(--display)}
 .g-badge .s{display:flex;flex-direction:column;gap:4px;font-size:14px;color:var(--bone-2)}
 .marquee{--gap:16px;display:flex;flex-direction:column;gap:var(--gap);mask-image:linear-gradient(90deg,transparent,#000 6%,#000 94%,transparent);-webkit-mask-image:linear-gradient(90deg,transparent,#000 6%,#000 94%,transparent)}
-.track{display:flex;gap:var(--gap);width:max-content;animation:slide var(--dur,70s) linear infinite}
-.track.r2{--dur:86s}
-.marquee:hover .track{animation-play-state:paused}
-@keyframes slide{from{transform:translateX(0)}to{transform:translateX(calc(-50% - var(--gap)/2))}}
+.marquee .row{overflow-x:auto;overflow-y:hidden;scrollbar-width:none;cursor:grab;touch-action:pan-x pan-y;overscroll-behavior-x:contain}
+.marquee .row::-webkit-scrollbar{display:none}
+.marquee .row.dragging{cursor:grabbing;user-select:none;-webkit-user-select:none}
+.track{display:flex;gap:var(--gap);width:max-content}
 .rev{width:360px;flex:none;border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px;background:var(--ink-2);display:flex;flex-direction:column;gap:12px}
 .rev header{display:flex;align-items:center;gap:12px}
 .rev .av{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;font:800 18px/1 var(--display);color:var(--on-gold);background:var(--gold);flex:none}
@@ -392,10 +392,7 @@ section{padding:clamp(72px,10vw,128px) 0}
 .rev p{margin:0;color:var(--bone-2);font-size:15px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
 .rev .gmark{margin-left:auto;width:20px;height:20px;flex:none}
 @media (prefers-reduced-motion:reduce){
-  .track{animation:none}
   .marquee{mask-image:none;-webkit-mask-image:none}
-  .marquee .row{overflow-x:auto}
-  .track [aria-hidden="true"]{display:none}
 }
 
 /* PODCASTS */
@@ -1125,6 +1122,33 @@ const REVIEWS = [
   const rowA = REVIEWS.filter((_,i)=>i%2===0), rowB = REVIEWS.filter((_,i)=>i%2===1);
   const row = (list,cls)=>`<div class="row"><div class="track ${cls}">${list.map(r=>card(r,false)).join('')}${list.map(r=>card(r,true)).join('')}</div></div>`;
   document.getElementById('marquee').innerHTML = row(rowA,'r1') + row(rowB,'r2');
+
+  /* automatikus görgetés jobbról balra; egérrel húzható, trackpaddel és ujjal görgethető */
+  const GAP = 16, still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  document.querySelectorAll('#marquee .row').forEach((row,i)=>{
+    const speed = i ? 22 : 28; // px/mp
+    let pos = 0, hover = false, drag = null, holdUntil = 0, last = performance.now();
+    const period = ()=> (row.scrollWidth + GAP) / 2;
+    const wrap = v => { const p = period(); if(p <= 0) return v; while(v >= p) v -= p; while(v < 0) v += p; return v; };
+    const set = v => { pos = wrap(v); row.scrollLeft = pos; };
+    row.addEventListener('pointerenter', e=>{ if(e.pointerType==='mouse') hover = true; });
+    row.addEventListener('pointerleave', ()=>{ hover = false; });
+    row.addEventListener('pointerdown', e=>{
+      if(e.pointerType !== 'mouse'){ holdUntil = performance.now() + 2500; return; }
+      drag = {x:e.clientX, s:pos}; row.setPointerCapture(e.pointerId); row.classList.add('dragging');
+    });
+    row.addEventListener('pointermove', e=>{ if(drag) set(drag.s - (e.clientX - drag.x)); });
+    const end = ()=>{ drag = null; row.classList.remove('dragging'); };
+    row.addEventListener('pointerup', end); row.addEventListener('pointercancel', end);
+    row.addEventListener('scroll', ()=>{ if(Math.abs(row.scrollLeft - pos) > 1){ holdUntil = performance.now() + 2500; pos = row.scrollLeft; const w = wrap(pos); if(w !== pos) set(w); } }, {passive:true});
+    row.addEventListener('dragstart', e=>e.preventDefault());
+    function tick(now){
+      const dt = Math.min(now - last, 64) / 1000; last = now;
+      if(!still && !hover && !drag && now > holdUntil) set(pos + speed * dt);
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  });
 })();
 
 
